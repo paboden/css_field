@@ -1,0 +1,4 @@
+name = CSS Field
+description = Provides a CSS input field for inputing custom css.
+core = 7.x
+dependencies[] = field

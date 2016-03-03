@@ -1,0 +1,253 @@
+<?php
+/**
+ * @file
+ */
+
+/**
+ * Implements hook_field_info().
+ */
+function css_field_field_info() {
+  return array(
+    'css_field' => array(
+      'label' => t('CSS'),
+      'description' => t('This field stores CSS and media information in the database.'),
+      'default_widget' => 'css_field',
+      'default_formatter' => 'css_field',
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_widget_info().
+ */
+function css_field_field_widget_info() {
+  return array(
+    'css_field_textfield' => array(
+      'label' => t('CSS input'),
+      'field types' => array('css_field'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_widget_form().
+ */
+function css_field_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
+  $settings = $instance['widget']['settings'];
+  $editor_theme = $settings['css_field_editor_theme'];
+
+  if ($editor_theme !== 'none') {
+    drupal_add_js(drupal_get_path('module', 'css_field') . '/js/css_field.js');
+    drupal_add_js(array('css_field' => array('editorTheme' => $editor_theme)), 'setting');
+  }
+
+  if ($field['cardinality'] == 1) {
+    $element['#type'] = 'fieldset';
+  }
+
+  $element['css'] = array(
+    '#type' => 'textarea',
+    '#row' => 10,
+    '#attributes' => array(
+      'data-ace-editor' => 'data-ace-editor',
+    ),
+    '#default_value' => isset($items[$delta]['css']) ? $items[$delta]['css'] : '',
+  );
+
+  $options = array(
+    'all' => t('All'),
+    'screen' => t('Screen'),
+    'print' => t('Print'),
+    'speech' => t('Speech'),
+  );
+
+  if (module_exists('breakpoints')) {
+    $breakpoints = breakpoints_breakpoint_load_all();
+    foreach ($breakpoints as $breakpoint) {
+      $options[$breakpoint->machine_name] = $breakpoint->breakpoint;
+    }
+  }
+
+  $element['media'] = array(
+    '#type' => 'select',
+    '#options' => $options,
+    '#title' => t('Media query'),
+    '#description' => t('Select what media (all, print, screen...) or breakpoint this css should be applied to.'),
+    '#default_value' => isset($items[$delta]['media']) ? $items[$delta]['media'] : 'all',
+  );
+
+  return $element;
+}
+
+/**
+ * Implements hook_field_widget_settings_form().
+ */
+function css_field_field_widget_settings_form($field, $instance) {
+
+  $options = array(
+    'none' => t('None'),
+    'solarized_dark' => t('Solarized Dark'),
+    'solarized' => t('Solarized'),
+    'ambiance' => t('Ambiance'),
+    'clouds' => t('Clouds'),
+    'dreamweaver' => t('Dreamweaver'),
+    'monokai' => t('Monokai'),
+    'xcode' => t('Xcode'),
+  );
+
+  $element['css_field_editor_theme'] = array(
+    '#type' => 'select',
+    '#options' => $options,
+    '#title' => t('Select editor theme'),
+    '#description' => t('Select the editor\'s theme style for the css field'),
+    '#default_value' => isset($instance['widget']['settings']['css_field_editor_theme']) ? $instance['widget']['settings']['css_field_editor_theme'] : 'solarized_dark',
+  );
+
+  $element['css_field_enable_online_validation'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable W3Validation'),
+    '#description' => t('This will enable a remote validation service to scan the css and report errors with the css before allowing it to be saved.'),
+    '#default_value' => isset($instance['widget']['settings']['css_field_enable_online_validation']) ? $instance['widget']['settings']['css_field_enable_online_validation'] : TRUE,
+  );
+
+  return $element;
+}
+
+/**
+ * Implementation of hook_field_is_empty().
+ */
+function css_field_field_is_empty($item, $field) {
+  if (empty($item['css'])) {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/**
+ * Implements hook_field_validate().
+ */
+function css_field_field_validate($entity_type, $entity, $field, $instance, $langcode, $items, &$errors) {
+  $instance_settings = $instance['widget']['settings'];
+  global $language;
+
+  // For each item, try to send it to the validator
+  foreach($items as $delta => $item) {
+    if (!empty($item['css'])) {
+      // If external validation is turned on.
+      if($instance_settings['css_field_enable_online_validation'] == TRUE) {
+        $url = 'http://jigsaw.w3.org/css-validator/validator?profile=css3&output=text&lang=' . $language->language .'&text=' . urlencode($item['css']);
+        $response = drupal_http_request($url);
+        if ($response->code == 200) {
+          $error = strpos($response->data, 'Sorry!');
+          if ($error !== FALSE ) {
+            $errors[$field['field_name']][$langcode][$delta][] = array(
+              'error' => 'css_syntax',
+              'message' => $response->data,
+            );
+          }
+        }
+        // If we couldn't connect to the service, allow the code for now.
+        elseif ($response->code != 200) {
+          drupal_print_message('Could not connect to W3Validator to perform css validation. Your code has been allowed.....for now.');
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_field_formatter_info().
+ */
+function css_field_field_formatter_info() {
+  return array(
+    'css_field' => array(
+      'label' => t('CSS: Embedded'),
+      'field types' => array('css_field'),
+    ),
+    'css_field_plain' => array(
+      'label' => t('CSS: Plain'),
+      'field types' => array('css_field'),
+    ),
+    'css_field_styled' => array(
+      'label' => t('CSS: Styled'),
+      'field types' => array('css_field'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_formatter_view().
+ */
+function css_field_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, &$items, $display) {
+  $settings = $display['settings'];
+  $element = array();
+
+  switch ($display['type']) {
+    case 'css_field':
+      foreach ($items as $key => $value) {
+        $breakpoint = NULL;
+        if (module_exists('breakpoints')) {
+          $breakpoint = breakpoints_breakpoint_load_by_fullkey($value['media']);
+        }
+        $media = !empty($breakpoint) ? $breakpoint->breakpoint : $value['media'];
+        $data = $value['css'];
+        $options = array(
+          'type' => 'inline',
+          'basename' => 'css_field_' . $entity_type,
+          'media' => $media,
+          'group' => CSS_THEME,
+          'preprocess' => FALSE,
+          'weight' => '9999',
+        );
+        drupal_add_css($data, $options);
+      }
+      break;
+    case 'css_field_plain':
+      foreach ($items as $key => $value) {
+        $element[$key] = array(
+          '#type' => 'markup',
+          '#markup' => '<small><pre>' . $value['css'] . '</pre></small>',
+        );
+      }
+      break;
+    case 'css_field_styled':
+      $instance_settings = $instance['widget']['settings'];
+      $editor_theme = $instance_settings['css_field_editor_theme'];
+      if ($editor_theme !== 'none') {
+        drupal_add_js(drupal_get_path('module', 'css_field') . '/js/css_field_formatter_display.js');
+        drupal_add_js(array('css_field' => array('readonlyTheme' => $editor_theme)), 'setting');
+        foreach ($items as $key => $value) {
+          $element[$key] = array(
+            '#type' => 'textarea',
+            '#value' => $value['css'],
+            '#attributes' => array(
+              'data-ace-editor' => 'data-ace-editor',
+            ),
+          );
+        }
+      }
+      else {
+        foreach ($items as $key => $value) {
+          $element[$key] = array(
+            '#type' => 'markup',
+            '#markup' => '<small><pre>' . $value['css'] . '</pre></small>',
+          );
+        }
+      }
+      break;
+  }
+
+  return $element;
+}
+
+
+
+
+
+
+
+
+
+
+
+
