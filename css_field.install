@@ -7,25 +7,20 @@
  * Implements hook_field_schema().
  */
 function css_field_field_schema($field) {
-  $columns = array(
-    'css' => array(
-      'type' => 'text',
-      'size' => 'big',
-      'not null' => FALSE,
-    ),
-    'media' => array(
-      'type' => 'varchar',
-      'length' => 255,
-      'not null' => FALSE,
-    ),
-  );
-
-  $indexes = array(
-    'media' => array('media'),
-  );
-
   return array(
-    'columns' => $columns,
-    'indexes' => $indexes,
+    'columns' => array(
+      'css' => array(
+        'description' => 'Snippet of css',
+        'type' => 'text',
+        'size' => 'big',
+        'not null' => FALSE,
+      ),
+      'media' => array(
+        'description' => 'The media/breakpoints that this snippet will be applied to',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+    ),
   );
 }

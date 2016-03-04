@@ -4,9 +4,8 @@
     attach: function (context, settings) {
       // Load and init ace editor asynchronous to support ajax forms.
       $.getScript('//cdn.jsdelivr.net/ace/1.1.6/noconflict/ace.js', function(data, textStatus, jqxhr ) {
-        $('textarea[data-ace-editor]').each(function () {
+        $('textarea[data-ace-editor-css]').each(function () {
           var textarea = $(this);
-          textarea.removeAttr('data-ace-editor');
 
           // Hide Drupal textarea.
           textarea.siblings('.grippie').hide();
@@ -27,7 +26,7 @@
           editor.setTheme('ace/theme/' + theme);
           editor.setOptions({
             minLines: 1,
-            maxLines: 100
+            maxLines: 500
           });
 
           // Update Drupal textarea value.
