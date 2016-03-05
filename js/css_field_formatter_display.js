@@ -3,9 +3,11 @@
   Drupal.behaviors.css_field_display = {
     attach: function (context, settings) {
       // Load and init ace editor asynchronous to support ajax forms.
-      $.getScript('//cdn.jsdelivr.net/ace/1.1.6/noconflict/ace.js', function(data, textStatus, jqxhr ) {
+      $.getScript('//cdn.jsdelivr.net/ace/1.2.3/noconflict/ace.js', function(data, textStatus, jqxhr ) {
         $('textarea[data-ace-editor-css]').each(function () {
           var textarea = $(this);
+
+          textarea.removeAttr('data-ace-editor-css');
 
           // Hide Drupal textarea.
           textarea.siblings('.grippie').hide();
