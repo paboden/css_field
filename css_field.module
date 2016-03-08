@@ -4,6 +4,18 @@
  */
 
 /**
+ * Implements hook_permission().
+ */
+function css_field_permission() {
+  return array(
+    'view css field debug' => array(
+      'title' => t('View CSS field debug'),
+      'description' => t('When debug enabled for a css field, messaging will display for user.'),
+    ),
+  );
+}
+
+/**
  * Implements hook_field_info().
  */
 function css_field_field_info() {
@@ -41,20 +53,9 @@ function css_field_field_widget_settings_form($field, $instance) {
   $widget = $instance['widget'];
   $settings = $widget['settings'];
 
-  $options = array(
-    'none' => t('None'),
-    'solarized_dark' => t('Solarized Dark'),
-    'solarized' => t('Solarized'),
-    'ambiance' => t('Ambiance'),
-    'clouds' => t('Clouds'),
-    'dreamweaver' => t('Dreamweaver'),
-    'monokai' => t('Monokai'),
-    'xcode' => t('Xcode'),
-  );
-
   $element['css_field_editor_theme'] = array(
     '#type' => 'select',
-    '#options' => $options,
+    '#options' => _css_field_list_of_editor_themes(),
     '#title' => t('Select editor theme'),
     '#description' => t("Select the editor's theme style for the css field"),
     '#default_value' => isset($settings['css_field_editor_theme']) ? $settings['css_field_editor_theme'] : 'solarized_dark',
@@ -107,6 +108,7 @@ function css_field_field_widget_form(&$form, &$form_state, $field, $instance, $l
       'data-ace-editor-css' => 'data-ace-editor-css',
     ),
     '#default_value' => isset($items[$delta]['css']) ? check_plain($items[$delta]['css']) : $defaults['css'],
+    '#description' => t('Do not add @media or &lt;style&gt; tags in your code.'),
   );
 
 
@@ -118,6 +120,8 @@ function css_field_field_widget_form(&$form, &$form_state, $field, $instance, $l
     'speech' => t('Speech'),
   );
 
+  // Integration with breakpoints. Add existing system breakpoints in with our
+  // defaults from above.
   if (module_exists('breakpoints')) {
     $breakpoints = breakpoints_breakpoint_load_all();
     foreach ($breakpoints as $breakpoint) {
@@ -154,6 +158,7 @@ function css_field_field_validate($entity_type, $entity, $field, $instance, $lan
   $widget = $instance['widget'];
   $settings = $widget['settings'];
   global $language;
+  $unable_to_connect = FALSE;
 
   // For each item, try to send it to the validator
   foreach($items as $delta => $item) {
@@ -175,11 +180,14 @@ function css_field_field_validate($entity_type, $entity, $field, $instance, $lan
         }
         // If we couldn't connect to the service, allow the code for now.
         elseif ($response->code != 200) {
-          drupal_print_message(t('Could not connect to W3Validator to perform css validation. Your code has been allowed.....for now.'));
+          $unable_to_connect = TRUE;
         }
       }
     }
 
+  }
+  if ($unable_to_connect == TRUE) {
+    drupal_set_message(t('Could not connect to W3Validator to perform css validation on all or some of your css snippets. Your code has been allowed...for now.'), 'warning');
   }
 }
 
@@ -191,6 +199,9 @@ function css_field_field_formatter_info() {
     'css_field' => array(
       'label' => t('CSS: Embedded'),
       'field types' => array('css_field'),
+      'settings' => array(
+        'css_field_debug_message' => TRUE,
+      ),
     ),
     'css_field_plain' => array(
       'label' => t('CSS: Plain'),
@@ -215,24 +226,24 @@ function css_field_field_formatter_settings_form($field, $instance, $view_mode, 
 
   $element = array();
 
+  // Set up our select list of applicable editor themes.
   if ($display['type'] == 'css_field_styled') {
-    $options = array(
-      'none' => t('None'),
-      'solarized_dark' => t('Solarized Dark'),
-      'solarized' => t('Solarized'),
-      'ambiance' => t('Ambiance'),
-      'clouds' => t('Clouds'),
-      'dreamweaver' => t('Dreamweaver'),
-      'monokai' => t('Monokai'),
-      'xcode' => t('Xcode'),
-    );
-
     $element['css_field_display_theme'] = array(
       '#type' => 'select',
-      '#options' => $options,
+      '#options' => _css_field_list_of_editor_themes(),
       '#title' => t('Select display theme'),
       '#description' => t("Select the theme style for the display of this css field"),
       '#default_value' => isset($settings['css_field_display_theme']) ? $settings['css_field_display_theme'] : 'solarized_dark',
+    );
+  }
+
+  // Set up our checkbox to enable/disable css field debugging.
+  if ($display['type'] == 'css_field') {
+    $element['css_field_debug_message'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Display dev/debug message'),
+      '#description' => t("This will display a message notifying users that this page has additional css coming from a css field.  Users must have permission to view dev/debug messages. "),
+      '#default_value' => isset($settings['css_field_debug_message']) ? $settings['css_field_debug_message'] : TRUE,
     );
   }
 
@@ -248,8 +259,15 @@ function css_field_field_formatter_settings_summary($field, $instance, $view_mod
 
   $summary = '';
 
+  // Summary of our styled editor theme.
   if ($display['type'] == 'css_field_styled') {
     $summary = t('Display theme: @theme', array('@theme' => $settings['css_field_display_theme']));
+  }
+
+  // Summary of our debug status.
+  if ($display['type'] == 'css_field') {
+    $status = $settings['css_field_debug_message'] == TRUE ? t('Enabled') : t('Disabled');
+    $summary = t('Debug message: @status', array('@status' => $status));
   }
 
   return $summary;
@@ -264,25 +282,48 @@ function css_field_field_formatter_view($entity_type, $entity, $field, $instance
 
   switch ($display['type']) {
     case 'css_field':
-      foreach ($items as $key => $value) {
-        $breakpoint = NULL;
-        if (module_exists('breakpoints')) {
-          $breakpoint = breakpoints_breakpoint_load_by_fullkey($value['media']);
+      // Auto kill the embedded css display if entity is being viewed
+      // from an admin page. This is to try to preserve sanity. If this field is
+      // needed to work for admin display, than you need to rethink what you are
+      // doing. :)
+      $page_is_admin = path_is_admin(current_path());
+      if (!$page_is_admin) {
+        //
+        // Display debug messaging if enabled and to users with permission.
+        // We want dev's to have an easy time figuring out where the odd css
+        // may be coming from.
+        if (!empty($items) && ($settings['css_field_debug_message'] == TRUE) && user_access('view css field debug')) {
+          $debug_message = _css_field_generate_css_comment($entity_type, $entity, $field, $instance, $langcode, $display);
+          drupal_set_message($debug_message);
         }
-        $media = !empty($breakpoint) ? $breakpoint->breakpoint : $value['media'];
-        $data = check_plain($value['css']);
-        $options = array(
-          'type' => 'inline',
-          'basename' => 'css_field_' . $entity_type,
-          'media' => $media,
-          'group' => CSS_THEME,
-          'preprocess' => TRUE,
-          'weight' => '9999',
-          'attributes' => array(
-            'class' => 'css-field',
-          ),
-        );
-        drupal_add_css($data, $options);
+
+        foreach ($items as $key => $value) {
+          //
+          // If breakpoint module is enabled, get the breakpoint info from the
+          // name. if no breakpoint is returned, then use the original value
+          // from the field
+          $breakpoint = NULL;
+          if (module_exists('breakpoints')) {
+            $breakpoint = breakpoints_breakpoint_load_by_fullkey($value['media']);
+          }
+          $media = !empty($breakpoint) ? $breakpoint->breakpoint : $value['media'];
+
+          // Set the data as the css content.
+          $data = check_plain($value['css']);
+          // Set up the basic options.
+          $options = array(
+            'type' => 'inline',
+            'basename' => 'css_field_' . $entity_type,
+            'media' => $media,
+            'group' => CSS_THEME,
+            'preprocess' => TRUE,
+            'weight' => '9999',
+            'attributes' => array(
+              'class' => 'css-field',
+            ),
+          );
+          drupal_add_css($data, $options);
+        }
       }
       break;
     case 'css_field_plain':
@@ -321,4 +362,60 @@ function css_field_field_formatter_view($entity_type, $entity, $field, $instance
   }
 
   return $element;
+}
+
+/**
+ * Helper function to generate the CSS comment
+ *
+ * This comment will help users identify where the css is coming from and make
+ * it easier to debug when its embedded.
+ *
+ * @param $entity_type
+ *        string: The type of entity
+ * @param $entity
+ *        array: data about the entity
+ * @param $field
+ *        array: data about the field
+ * @param $instance
+ *        array: data about the field instance
+ * @param $langcode
+ *        string: language of the current state
+ * @param $display
+ *        array: data about the view mode of the entity
+ *
+ * @return string
+ */
+function _css_field_generate_css_comment($entity_type, $entity, $field, $instance, $langcode, $display) {
+  $info = entity_get_info($entity_type);
+  $uri = entity_uri($entity_type, $entity);
+
+  $css_comment = NULL;
+  $css_comment .= t('This page has additional css coming from the @entity_label field named "@field_label" (@field_name). ' , array('@field_name' => $field['field_name'], '@field_label' => $instance['label'], '@entity_label' => $info['label']));
+  $css_comment .= t("Visit !url to edit this code." , array('!url' => l($uri['path'] . '/edit', $uri['path'] . '/edit', array())));
+
+  return $css_comment;
+}
+
+/**
+ * Helper function to get list of available ace editor themes
+ *
+ * Use hook_css_field_list_of_editor_themes_alter() and add new themes to the
+ * options. Visit https://github.com/ajaxorg/ace/tree/master/lib/ace/theme to
+ * see the full list of available themes from ace.
+ *
+ * @return array
+ */
+function _css_field_list_of_editor_themes() {
+  $options = array(
+    'none' => t('None'),
+    'solarized_dark' => t('Solarized Dark'),
+    'solarized' => t('Solarized'),
+    'ambiance' => t('Ambiance'),
+    'dreamweaver' => t('Dreamweaver'),
+    'monokai' => t('Monokai'),
+  );
+
+  drupal_alter('css_field_list_of_editor_themes', $options);
+
+  return $options;
 }
