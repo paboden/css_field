@@ -1,26 +1,72 @@
 <?php
 /**
  * @file
+ * Install, update and uninstall functions for the css_field module.
  */
 
 /**
  * Implements hook_field_schema().
  */
 function css_field_field_schema($field) {
+  $columns = array();
+  $indexes = array();
+  $foreign_keys = array();
+
+  switch ($field['type']) {
+    case 'css_field':
+      $columns = array(
+        'css' => array(
+          'description' => 'Snippet of css',
+          'type' => 'text',
+          'size' => 'big',
+          'not null' => FALSE,
+        ),
+        'media' => array(
+          'description' => 'The media/breakpoints that this snippet will be applied to',
+          'type' => 'varchar',
+          'length' => 255,
+          'not null' => FALSE,
+        ),
+      );
+      break;
+
+    case 'css_file':
+      $columns = array(
+        'fid' => array(
+          'description' => 'The {file_managed}.fid being referenced in this field.',
+          'type' => 'int',
+          'not null' => FALSE,
+          'unsigned' => TRUE,
+        ),
+        'media' => array(
+          'description' => 'The media/breakpoints that this snippet will be applied to',
+          'type' => 'varchar',
+          'length' => 255,
+          'not null' => FALSE,
+        ),
+        'description' => array(
+          'description' => 'A description of the file.',
+          'type' => 'text',
+          'not null' => FALSE,
+        ),
+      );
+
+      $indexes = array(
+        'fid' => array('fid'),
+      );
+
+      $foreign_keys = array(
+        'fid' => array(
+          'table' => 'file_managed',
+          'columns' => array('fid' => 'fid'),
+        ),
+      );
+      break;
+  }
+
   return array(
-    'columns' => array(
-      'css' => array(
-        'description' => 'Snippet of css',
-        'type' => 'text',
-        'size' => 'big',
-        'not null' => FALSE,
-      ),
-      'media' => array(
-        'description' => 'The media/breakpoints that this snippet will be applied to',
-        'type' => 'varchar',
-        'length' => 255,
-        'not null' => FALSE,
-      ),
-    ),
+    'columns' => $columns,
+    'indexes' => $indexes,
+    'foreign keys' => $foreign_keys,
   );
 }
