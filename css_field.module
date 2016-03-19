@@ -214,7 +214,6 @@ function css_field_field_widget_form(&$form, &$form_state, $field, $instance, $l
       if ($editor_theme !== 'none') {
         drupal_add_js('//cdn.jsdelivr.net/ace/1.2.3/noconflict/ace.js', array('type' => 'external', 'scope' => 'header', 'group' => JS_THEME, 'every_page' => TRUE, 'weight' => -1,));
         drupal_add_js(drupal_get_path('module', 'css_field') . '/js/css_field.js');
-        //drupal_add_js(array('css_field' => array('fieldName' => $instance['field_name'], 'editorTheme' => $editor_theme)), 'setting');
       }
     }
 
