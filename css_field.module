@@ -717,7 +717,7 @@ function css_field_field_formatter_view($entity_type, $entity, $field, $instance
           $media = !empty($breakpoint) ? $breakpoint->breakpoint : $item['media'];
 
           // Set the data as the css content.
-          $content = _css_field_get_content($item);
+          $content = _css_field_get_content($item, $entity_type, $field, $instance);
           $data = filter_xss($content);
           // Set up the basic options. We use inline css for 2 reasons.
           // 1) So that both snippet and file functioning css are output
@@ -742,7 +742,7 @@ function css_field_field_formatter_view($entity_type, $entity, $field, $instance
     case 'css_file_plain':
     case 'css_field_plain':
       foreach ($items as $delta => $item) {
-        $content = _css_field_get_content($item);
+        $content = _css_field_get_content($item, $entity_type, $field, $instance);
         $element[$delta] = array(
           '#type' => 'markup',
           '#prefix' => '<pre>',
@@ -758,7 +758,7 @@ function css_field_field_formatter_view($entity_type, $entity, $field, $instance
         drupal_add_js('//cdn.jsdelivr.net/ace/1.2.3/noconflict/ace.js', array('type' => 'external', 'scope' => 'header', 'group' => JS_THEME, 'every_page' => TRUE, 'weight' => -1,));
         drupal_add_js(drupal_get_path('module', 'css_field') . '/js/css_field.js');
         foreach ($items as $delta => $item) {
-          $content = _css_field_get_content($item);
+          $content = _css_field_get_content($item, $entity_type, $field, $instance);
           $element[$delta] = array(
             '#type' => 'textarea',
             '#value' => filter_xss($content),
@@ -772,7 +772,7 @@ function css_field_field_formatter_view($entity_type, $entity, $field, $instance
       }
       else {
         foreach ($items as $delta => $item) {
-          $content = _css_field_get_content($item);
+          $content = _css_field_get_content($item, $entity_type, $field, $instance);
           $element[$delta] = array(
             '#type' => 'markup',
             '#prefix' => '<pre>',
@@ -808,17 +808,29 @@ function css_field_field_formatter_view($entity_type, $entity, $field, $instance
  *
  * @param $item
  *        array: data and value of the individual field item.
+ * @param $entity_type
+ *        string: The type of entity
+ * @param $field
+ *        array: data about the field
+ * @param $instance
+ *        array: data about the field instance
  *
  * @return string
  */
-function _css_field_get_content($item) {
+function _css_field_get_content($item, $entity_type, $field, $instance) {
   // If its the css_file field, the uri will be set. If its a file, we
   // retrieve the contents of that file, so we can return it as inline
   // css.
   $content = '';
 
   if (isset($item['uri'])) {
-    $content = file_get_contents($item['uri']);
+    if (is_file($item['uri'])) {
+      $content = file_get_contents($item['uri']);
+    }
+    else {
+      $missing_file = _css_field_generate_missing_file_message($item, $entity_type, $field, $instance);
+      drupal_set_message($missing_file, 'warning');
+    }
   }
   elseif (isset($item['css'])) {
     $content = $item['css'];
@@ -857,6 +869,28 @@ function _css_field_generate_css_comment($entity_type, $entity, $field, $instanc
   $css_comment .= t("Visit !url to edit this code." , array('!url' => l($uri['path'] . '/edit', $uri['path'] . '/edit', array())));
 
   return $css_comment;
+}
+
+/**
+ * Helper function to generate the CSS missing file message
+ *
+ * This comment will help users identify where the css is coming from and make
+ * it easier to debug when its embedded.
+ *
+ * @param $entity_type
+ *        string: The type of entity
+ * @param $field
+ *        array: data about the field
+ * @param $instance
+ *        array: data about the field instance
+ *
+ * @return string
+ */
+function _css_field_generate_missing_file_message($item, $entity_type, $field, $instance) {
+  $info = entity_get_info($entity_type);
+  $css_missing_message = t('This page should have additional css coming from field "@field_label" (@field_name), but @uri cannot be found.' , array('@field_name' => $field['field_name'], '@field_label' => $instance['label'], '@entity_label' => $info['label'], '@uri' => $item['uri']));
+
+  return $css_missing_message;
 }
 
 /**
