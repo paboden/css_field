@@ -609,6 +609,7 @@ function css_field_field_formatter_info() {
       'field types' => array('css_file'),
       'settings' => array(
         'css_field_display_theme' => 'solarized_dark',
+        'css_file_display_name' => TRUE,
       ),
     ),
   );
@@ -625,6 +626,16 @@ function css_field_field_formatter_settings_form($field, $instance, $view_mode, 
 
   switch ($display['type']) {
     case 'css_field_styled':
+      // Set up our select list of applicable editor themes.
+      $element['css_field_display_theme'] = array(
+        '#type' => 'select',
+        '#options' => _css_field_list_of_editor_themes(),
+        '#title' => t('Select display theme'),
+        '#description' => t("Select the theme style for the display of this css field"),
+        '#default_value' => isset($settings['css_field_display_theme']) ? $settings['css_field_display_theme'] : 'solarized_dark',
+      );
+      break;
+
     case 'css_file_styled':
       // Set up our select list of applicable editor themes.
       $element['css_field_display_theme'] = array(
@@ -633,6 +644,14 @@ function css_field_field_formatter_settings_form($field, $instance, $view_mode, 
         '#title' => t('Select display theme'),
         '#description' => t("Select the theme style for the display of this css field"),
         '#default_value' => isset($settings['css_field_display_theme']) ? $settings['css_field_display_theme'] : 'solarized_dark',
+      );
+      // Decide if we want to display a linked name of the file above the
+      // styled output.
+      $element['css_file_display_name'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Display file name'),
+        '#description' => t("This will display the name (linked) of the file above the styled output of its contents."),
+        '#default_value' => isset($settings['css_file_display_name']) ? $settings['css_file_display_name'] : TRUE,
       );
       break;
 
@@ -689,8 +708,8 @@ function css_field_field_formatter_view($entity_type, $entity, $field, $instance
     case 'css_file':
     case 'css_field':
       // Auto kill the embedded css display if entity is being viewed
-      // from an admin page. This is to try to preserve sanity. If this field is
-      // needed to work for admin display, than realistically you need to
+      // from an admin page. This is to try to preserve sanity. If this field
+      // is needed to work for admin display, than realistically you need to
       // rethink what you are doing. :) Discovered on views admin pages that if
       // looking at rendered types with functioning css formatter, it was
       // rendering that css.
@@ -759,7 +778,13 @@ function css_field_field_formatter_view($entity_type, $entity, $field, $instance
         drupal_add_js(drupal_get_path('module', 'css_field') . '/js/css_field.js');
         foreach ($items as $delta => $item) {
           $content = _css_field_get_content($item, $entity_type, $field, $instance);
-          $element[$delta] = array(
+          if ($display['type'] == 'css_file_styled' && ($settings['css_file_display_name'] == TRUE)) {
+            $element[$delta]['file_link'] = array(
+              '#theme' => 'file_link',
+              '#file' => (object) $item,
+            );
+          }
+          $element[$delta]['code'] = array(
             '#type' => 'textarea',
             '#value' => filter_xss($content),
             '#row' => 10,
