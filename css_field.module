@@ -173,7 +173,7 @@ function css_field_field_widget_settings_form($field, $instance) {
   }
 
   if ($type == 'css_file') {
-    $form['progress_indicator'] = array(
+    $element['progress_indicator'] = array(
       '#type' => 'radios',
       '#title' => t('Progress indicator'),
       '#options' => array(
